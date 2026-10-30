@@ -3,17 +3,37 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const app = express();
 const PORT = process.env.PORT || 3000;
+const API_KEY = process.env.API_KEY;
+
 app.use(cors());
 app.use(bodyParser.json());
+
 let wallets = {};
 let userWallets = {};
+
+// 🔒 SECURITY CHECK - Lock API with secret key
+function checkApiKey(req, res, next) {
+  // Allow homepage without key
+  if (req.path === '/') return next();
+  // If no API_KEY set in Render, allow all (for now)
+  if (!API_KEY) return next();
+  const key = req.headers['x-api-key'] || req.query.api_key;
+  if (key !== API_KEY) {
+    return res.status(401).json({ error: 'Unauthorized - Invalid API Key' });
+  }
+  next();
+}
+
+app.use(checkApiKey);
+
 app.get('/', (req, res) => {
-  res.json({ status: 'Wallet API Running', endpoints: ['/create', '/balance/:id', '/wallets'] });
+  res.json({ status: 'Wallet API Running', secure: !!API_KEY });
 });
+
 app.post('/create', (req, res) => {
   const { userId } = req.body;
   const walletId = 'WALLET-' + Date.now();
-  const wallet = { id: walletId, balance: 0, userId: userId || 'guest', created: new Date() };
+  const wallet = { id: walletId, balance: 0 };
   wallets[walletId] = wallet;
   if (userId) {
     if (!userWallets[userId]) userWallets[userId] = [];
@@ -21,20 +41,13 @@ app.post('/create', (req, res) => {
   }
   res.json({ success: true, wallet });
 });
+
 app.get('/balance/:id', (req, res) => {
   const wallet = wallets[req.params.id];
   if (!wallet) return res.status(404).json({ error: 'Wallet not found' });
-  res.json({ balance: wallet.balance, wallet });
+  res.json(wallet);
 });
-app.get('/wallets', (req, res) => {
-  res.json(Object.values(wallets));
-});
-app.post('/add-funds', (req, res) => {
-  const { walletId, amount } = req.body;
-  if (!wallets[walletId]) return res.status(404).json({ error: 'Wallet not found' });
-  wallets[walletId].balance += Number(amount);
-  res.json({ success: true, wallet: wallets[walletId] });
-});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
